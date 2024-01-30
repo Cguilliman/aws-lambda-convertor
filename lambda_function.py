@@ -1,34 +1,44 @@
+import boto3
 import os
 from io import BytesIO
 from PIL import Image
 
-def lambda_handler(event, context):
-    # Get the image data from the event
-    image_data = event['image_data']
-    
-    # Open the image using PIL
+# Initialize S3 client
+s3 = boto3.client('s3')
+
+def convert_image(image_data, image_format):
     image = Image.open(BytesIO(image_data))
+    buffer = BytesIO()
+    image.save(buffer, format=image_format)
+    return buffer.getvalue()
+
+def lambda_handler(event, context):
+    # Get the bucket and key from the event
+    bucket = event['Records'][0]['s3']['bucket']['name']
+    key = event['Records'][0]['s3']['object']['key']
+    
+    # Download the JPEG image from S3
+    response = s3.get_object(Bucket=bucket, Key=key)
+    jpeg_data = response['Body'].read()
     
     # Convert to BMP
-    bmp_buffer = BytesIO()
-    image.save(bmp_buffer, format='BMP')
-    bmp_data = bmp_buffer.getvalue()
+    bmp_data = convert_image(jpeg_data, 'BMP')
+    bmp_key = os.path.splitext(key)[0] + '.bmp'
     
     # Convert to GIF
-    gif_buffer = BytesIO()
-    image.save(gif_buffer, format='GIF')
-    gif_data = gif_buffer.getvalue()
+    gif_data = convert_image(jpeg_data, 'GIF')
+    gif_key = os.path.splitext(key)[0] + '.gif'
     
     # Convert to PNG
-    png_buffer = BytesIO()
-    image.save(png_buffer, format='PNG')
-    png_data = png_buffer.getvalue()
+    png_data = convert_image(jpeg_data, 'PNG')
+    png_key = os.path.splitext(key)[0] + '.png'
     
-    # You can now do something with the converted images
-    # For example, save them to S3
+    # Upload the converted images back to S3
+    s3.put_object(Bucket=bucket, Key=bmp_key, Body=bmp_data)
+    s3.put_object(Bucket=bucket, Key=gif_key, Body=gif_data)
+    s3.put_object(Bucket=bucket, Key=png_key, Body=png_data)
     
     return {
-        'bmp_data': bmp_data,
-        'gif_data': gif_data,
-        'png_data': png_data
+        'statusCode': 200,
+        'body': 'Images converted and saved successfully.'
     }
